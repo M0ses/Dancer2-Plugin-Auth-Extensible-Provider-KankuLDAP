@@ -4,7 +4,7 @@ t/environments/provider-ldap.yml
 t/manifest.t
 t/pod.t
 t/pod-coverage.t
-lib/Dancer2/Plugin/Auth/Extensible/Provider/LDAP.pm
+lib/Dancer2/Plugin/Auth/Extensible/Provider/KankuLDAP.pm
 MANIFEST
 MANIFEST.SKIP
 Makefile.PL

@@ -1,4 +1,4 @@
-package Dancer2::Plugin::Auth::Extensible::Provider::LDAP;
+package Dancer2::Plugin::Auth::Extensible::Provider::KankuLDAP;
 
 use Carp qw/croak/;
 use Dancer2::Core::Types qw/HashRef Str/;
@@ -12,11 +12,11 @@ our $VERSION = '0.702';
 
 =head1 NAME 
 
-Dancer2::Plugin::Auth::Extensible::Provider::LDAP - LDAP authentication provider for Dancer2::Plugin::Auth::Extensible
+Dancer2::Plugin::Auth::Extensible::Provider::KankuLDAP - Authentication provider for Dancer2::Plugin::Auth::Extensible mixing LDAP and local database
 
 =head1 DESCRIPTION
 
-This class is a generic LDAP authentication provider.
+This class mixes LDAP based authentication with database authorization
 
 See L<Dancer2::Plugin::Auth::Extensible> for details on how to use the
 authentication framework.

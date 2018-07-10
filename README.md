@@ -1,10 +1,10 @@
 # NAME 
 
-Dancer2::Plugin::Auth::Extensible::Provider::LDAP - LDAP authentication provider for Dancer2::Plugin::Auth::Extensible
+Dancer2::Plugin::Auth::Extensible::Provider::KankuLDAP - Authentication provider for Dancer2::Plugin::Auth::Extensible mixing LDAP  and local database
 
 # DESCRIPTION
 
-This class is a generic LDAP authentication provider.
+This class mixes LDAP based authentication with database authorization.
 
 See [Dancer2::Plugin::Auth::Extensible](https://metacpan.org/pod/Dancer2::Plugin::Auth::Extensible) for details on how to use the
 authentication framework.

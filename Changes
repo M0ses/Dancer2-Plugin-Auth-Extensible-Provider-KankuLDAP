@@ -1,4 +1,9 @@
-Revision history for Dancer2-Plugin-Auth-Extensible-Provider-LDAP
+Revision history for Dancer2-Plugin-Auth-Extensible-Provider-KankuLDAP
+
+0.703 Mon 09 Jul 14:33:08 CET 2018
+
+    * Created fork Dancer2-Plugin-Auth-Extensible-Provider-LDAP ->
+        Dancer2-Plugin-Auth-Extensible-Provider-KankuLDAP
 
 0.702 Mon 21 Nov 14:33:08 CET 2016
 

@@ -118,8 +118,8 @@ BEGIN {
     $ldap->mock_password( 'cn=bananarepublic, ou=People, dc=localnet',
         'whatever' );
 
-    use Dancer2::Plugin::Auth::Extensible::Provider::LDAP;
-    package Dancer2::Plugin::Auth::Extensible::Provider::LDAP;
+    use Dancer2::Plugin::Auth::Extensible::Provider::KankuLDAP;
+    package Dancer2::Plugin::Auth::Extensible::Provider::KankuLDAP;
 
     no warnings 'redefine';
     sub ldap {
