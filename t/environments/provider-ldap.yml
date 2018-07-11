@@ -1,5 +1,12 @@
 plugins:
+    DBIC:
+        default:
+            dsn: dbi:SQLite:dbname=t/tmp.db
+            schema_class: Kanku::Schema
+            options:
+                sqlite_unicode: 1
     Auth::Extensible:
+
         realms:
             config1:
                 provider: KankuLDAP
@@ -31,3 +38,8 @@ plugins:
                 binddn: 'cn=admin, dc=localnet'
                 bindpw: Eec8aireiZ0bo7Shooxe
                 user_filter: '(employeeType=external)'
+initial_roles:
+   mapping:
+       BeerDrinker: BeerDrinker
+       Motorcyclist: Motorcyclist
+       CiderDrinker: CiderDrinker

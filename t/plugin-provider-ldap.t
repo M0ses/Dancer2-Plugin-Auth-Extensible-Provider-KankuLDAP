@@ -9,6 +9,7 @@ use lib 't/lib';
 BEGIN {
     $ENV{DANCER_ENVDIR}      = 't/environments';
     $ENV{DANCER_ENVIRONMENT} = 'provider-ldap';
+    unshift @::INC, '/usr/lib/kanku/lib';
 }
 
 use Test::Net::LDAP::Mock;
@@ -21,7 +22,34 @@ Test::Net::LDAP::Mock->mock_target(
     schema => 'ldap'
 );
 
+use Kanku::Schema;
+use DBIx::Class::Migration;
+
+
 BEGIN {
+    $::db =  't/tmp.db';
+    my $dsn = "dbi:SQLite:dbname=$::db";
+
+    (-f $::db) && unlink $::db;
+
+    my $migration = DBIx::Class::Migration->new(
+      schema_class   => 'Kanku::Schema',
+      schema_args    => [$dsn],
+      target_dir     => '/usr/share/kanku',
+    );
+
+    $migration->install();
+    print "Database installation done\n";
+
+    my $schema = Kanku::Schema->connect($dsn);
+    for my $role (
+        {id=> 1, role => 'BeerDrinker'},
+        {id=> 2, role => 'Motorcyclist'},
+        {id=> 3, role => 'CiderDrinker'},
+    ) {
+        $schema->resultset('Role')->create($role);
+    }
+
     my $ldap = Test::Net::LDAP::Mock->new( '127.0.0.1', port => 389 );
 
     $ldap->mock_root_dse( namingContexts => 'dc=localnet' );
@@ -139,5 +167,7 @@ my $app = Dancer2->runner->psgi_app;
 is( ref $app, 'CODE', 'Got app' );
 
 Dancer2::Plugin::Auth::Extensible::Test::runtests($app);
+
+unlink $::db || die "Failed to unlink db file $::db: $!";
 
 done_testing;

@@ -189,14 +189,14 @@ has role_member_attribute => (
 
 The user's attribute to search for in role lookup
 
-Defaults to 'dc'.
+Defaults to 'dn'.
 
 =cut
 
 has role_search_attribute => (
     is      => 'ro',
     isa     => Str,
-    default => 'dc',
+    default => 'dn',
 );
 
 has dancer2_plugin_dbic => (
@@ -302,12 +302,15 @@ sub get_user_details {
         );
 
         my $dbu = $self->_check_user_in_database($username, $entry);
+
+	my $roles = [ map { $_->role->role } $dbu->user_roles];
+
         $user = {
           id       => $dbu->id,
           username => $dbu->username,
           name     => $dbu->name,
           deleted  => 0,
-          roles    => [ map { $_->role } $dbu->user_roles],
+          roles    => $roles,
           name     => $entry->get_value( $self->name_attribute ),
           dn       => $entry->dn,
           map { $_ => scalar $entry->get_value($_) } $entry->attributes,
@@ -341,6 +344,10 @@ sub get_user_roles {
 
 sub _check_user_in_database {
   my ($self, $username, $entry) = @_;
+
+  croak "username must be defined"
+    unless defined $username;
+
   my $db_user = $self->schema->resultset('User')->find({username => $username});
   if ($db_user) {
     $db_user->update({lastlogin=>DateTime->now()});
@@ -352,13 +359,20 @@ sub _check_user_in_database {
 sub _create_user_in_db {
   my ($self, $username, $entry) = @_;
 
+  croak "username must be defined"
+    unless defined $username;
+
   my $ldap = $self->ldap or return;
 
   $self->plugin->app->log(
     debug => "Could not find $username in database. Creating new database entry");
 
   # now get the roles
-  my $rsa = $entry->get_value( $self->role_search_attribute);
+  my $rsa = $entry->get_value( $self->role_search_attribute) || $entry->dn;
+  $self->plugin->app->log(
+    debug => "Value for role_search_attribute '".$self->role_search_attribute."': ".($rsa || q{}));
+
+  return unless $rsa;
   my $filter = '(&'
 	. $self->role_filter . '('
 	. $self->role_member_attribute . '='
@@ -385,7 +399,7 @@ sub _create_user_in_db {
     debug => "Found the following roles in ldap: '@ldap_roles'");
 
   my $c   = $self->plugin->app->config();
-  my @roles = split(',', $c->{initial_roles}->{default});
+  my @roles = split(',', $c->{initial_roles}->{default} || '');
   my $irm   = $c->{initial_roles}->{mapping};
   for my $r (@ldap_roles) {
     push @roles, $irm->{$r} if $irm->{$r};
@@ -395,8 +409,6 @@ sub _create_user_in_db {
 
   my @roles2create;
   @roles2create = map {{role_id => $_->id}} $self->schema->resultset('Role')->search([map {{role=>$_}} @roles]) if @roles;
-
-  $self->plugin->app->log(debug => "Roles to create: '@roles2create'");
 
   my $ud = {
       username         => $username,
