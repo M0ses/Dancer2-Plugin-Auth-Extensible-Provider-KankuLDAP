@@ -1,16 +1,17 @@
 package Dancer2::Plugin::Auth::Extensible::Provider::KankuLDAP;
 
 use Carp qw/croak/;
-use Dancer2::Core::Types qw/HashRef Str/;
+use Dancer2::Core::Types qw/HashRef Str Bool Object/;
 use Net::LDAP;
 
 use Moo;
 with "Dancer2::Plugin::Auth::Extensible::Role::Provider";
 use namespace::clean;
+use DateTime;
 
-our $VERSION = '0.702';
+our $VERSION = '0.704';
 
-=head1 NAME 
+=head1 NAME
 
 Dancer2::Plugin::Auth::Extensible::Provider::KankuLDAP - Authentication provider for Dancer2::Plugin::Auth::Extensible mixing LDAP and local database
 
@@ -68,28 +69,33 @@ has basedn => (
 This must be the distinguished name of a user capable of binding to
 and reading the directory (e.g. 'cn=admin,dc=example,dc=com').
 
-Required.
-
 =cut
 
 has binddn => (
     is       => 'ro',
     isa      => Str,
-    required => 1,
 );
 
 =head2 bindpw
 
 The password for L</binddn>.
 
-Required.
-
 =cut
 
 has bindpw => (
     is       => 'ro',
     isa      => Str,
-    required => 1,
+);
+
+=head2 noauth
+
+Don't use authentication for bind.
+
+=cut
+
+has noauth => (
+    is       => 'ro',
+    isa      => Bool,
 );
 
 =head2 username_attribute
@@ -179,6 +185,41 @@ has role_member_attribute => (
     default => 'member',
 );
 
+=head2 role_search_attribute
+
+The user's attribute to search for in role lookup
+
+Defaults to 'dc'.
+
+=cut
+
+has role_search_attribute => (
+    is      => 'ro',
+    isa     => Str,
+    default => 'dc',
+);
+
+has dancer2_plugin_dbic => (
+    is      => 'ro',
+    lazy    => 1,
+    default => sub { $_[0]->plugin->app->with_plugin('Dancer2::Plugin::DBIC') },
+    handles => { dbic_schema => 'schema' },
+    init_arg => undef,
+);
+
+has schema_name => ( is => 'ro', );
+
+has schema => (
+    is      => 'ro',
+    lazy    => 1,
+    default => sub {
+        my $self = shift;
+        $self->schema_name
+          ? $self->dbic_schema( $self->schema_name )
+          : $self->dbic_schema;
+    },
+);
+
 =head1 METHODS
 
 =head2 ldap
@@ -225,9 +266,16 @@ sub get_user_details {
     croak "username must be defined"
       unless defined $username;
 
+    croak 'Either noauth or binddn/bindpw need to be specified'
+      unless ($self->noauth || ($self->binddn && $self->bindpw));
+
+    my @params;
+    @params = ($self->binddn, password=> $self->bindpw)
+      unless $self->noauth;
+
     my $ldap = $self->ldap or return;
 
-    my $mesg = $ldap->bind( $self->binddn, password => $self->bindpw );
+    my $mesg = $ldap->bind(@params);
 
     if ( $mesg->is_error ) {
         croak "LDAP bind error: " . $mesg->error;
@@ -253,30 +301,16 @@ sub get_user_details {
             $entry->dn
         );
 
-        # now get the roles
-
-        $mesg = $ldap->search(
-            base   => $self->basedn,
-            filter => '(&'
-              . $self->role_filter . '('
-              . $self->role_member_attribute . '='
-              . $entry->dn . '))',
-        );
-
-        if ( $mesg->is_error ) {
-            $self->plugin->app->log(
-                warning => "LDAP search error: " . $mesg->error );
-        }
-
-        my @roles =
-          map { $_->get_value( $self->role_attribute ) } $mesg->entries;
-
+        my $dbu = $self->_check_user_in_database($username, $entry);
         $user = {
-            username => $username,
-            name     => $entry->get_value( $self->name_attribute ),
-            dn       => $entry->dn,
-            roles    => \@roles,
-            map { $_ => scalar $entry->get_value($_) } $entry->attributes,
+          id       => $dbu->id,
+          username => $dbu->username,
+          name     => $dbu->name,
+          deleted  => 0,
+          roles    => [ map { $_->role } $dbu->user_roles],
+          name     => $entry->get_value( $self->name_attribute ),
+          dn       => $entry->dn,
+          map { $_ => scalar $entry->get_value($_) } $entry->attributes,
         };
     }
     else {
@@ -305,5 +339,80 @@ sub get_user_roles {
     return $user->{roles};
 }
 
-1;
+sub _check_user_in_database {
+  my ($self, $username, $entry) = @_;
+  my $db_user = $self->schema->resultset('User')->find({username => $username});
+  if ($db_user) {
+    $db_user->update({lastlogin=>DateTime->now()});
+    return $db_user;
+  }
+  return $self->_create_user_in_db($username, $entry);
+}
 
+sub _create_user_in_db {
+  my ($self, $username, $entry) = @_;
+
+  my $ldap = $self->ldap or return;
+
+  $self->plugin->app->log(
+    debug => "Could not find $username in database. Creating new database entry");
+
+  # now get the roles
+  my $rsa = $entry->get_value( $self->role_search_attribute);
+  my $filter = '(&'
+	. $self->role_filter . '('
+	. $self->role_member_attribute . '='
+	. $rsa . '))';
+
+  $self->plugin->app->log(
+    debug => "Searching for roles with the following filter: $filter");
+
+  my $mesg = $ldap->search(
+      base   => $self->basedn,
+      filter => $filter,
+  );
+
+  if ( $mesg->is_error ) {
+      $self->plugin->app->log(
+	  warning => "LDAP search error: " . $mesg->error );
+  }
+
+  my @entries = $mesg->entries;
+  my @ldap_roles =
+    map { $_->get_value( $self->role_attribute ) } @entries;
+
+  $self->plugin->app->log(
+    debug => "Found the following roles in ldap: '@ldap_roles'");
+
+  my $c   = $self->plugin->app->config();
+  my @roles = split(',', $c->{initial_roles}->{default});
+  my $irm   = $c->{initial_roles}->{mapping};
+  for my $r (@ldap_roles) {
+    push @roles, $irm->{$r} if $irm->{$r};
+  }
+
+  $self->plugin->app->log(debug => "Found the following roles: '@roles'");
+
+  my @roles2create;
+  @roles2create = map {{role_id => $_->id}} $self->schema->resultset('Role')->search([map {{role=>$_}} @roles]) if @roles;
+
+  $self->plugin->app->log(debug => "Roles to create: '@roles2create'");
+
+  my $ud = {
+      username         => $username,
+      name             => $entry->get_value( $self->name_attribute ),
+      lastlogin       =>  DateTime->now(),
+      pw_changed       => 0,
+      password         => '',
+      deleted          => 1,
+      user_roles       => \@roles2create,
+  };
+
+  $ldap->unbind;
+  $ldap->disconnect;
+
+  return $self->schema->resultset('User')->create($ud);
+
+}
+
+1;
