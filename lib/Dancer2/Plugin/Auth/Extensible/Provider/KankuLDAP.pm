@@ -304,6 +304,8 @@ sub get_user_details {
         my $dbu = $self->_check_user_in_database($username, $entry);
 
 	my $roles = [ map { $_->role->role } $dbu->user_roles];
+        my $role_id = {};
+        $role_id->{$_} = 1 for @{$roles};
 
         $user = {
           id       => $dbu->id,
@@ -311,6 +313,7 @@ sub get_user_details {
           name     => $dbu->name,
           deleted  => 0,
           roles    => $roles,
+          role_id  => $role_id,
           name     => $entry->get_value( $self->name_attribute ),
           dn       => $entry->dn,
           map { $_ => scalar $entry->get_value($_) } $entry->attributes,
